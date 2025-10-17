@@ -1106,5 +1106,9 @@ spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
 
 4.Access the Application:Open a browser (e.g., Chrome, Firefox).Navigate to:http://localhost:8080/
 
-5.Welcome Page: http://localhost:8080/ → User Login (/login) or Admin Login (/admin/login).User Flow: /register → /login → /user/home → /rooms → /book/{roomId} → /bookings.Admin Flow: /admin/login → /admin/home → /admin/addRoom, /admin/edit/{id}, /admin/delete/{id}.
+5.Welcome Page: http://localhost:8080/ 
+
+      User Login (/login) or Admin Login (/admin/login).
+      User Flow: /register → /login → /user/home → /rooms → /book/{roomId} → /bookings.
+      Admin Flow: /admin/login → /admin/home → /admin/addRoom, /admin/edit/{id}, /admin/delete/{id}.
 
