@@ -75,6 +75,7 @@ Copy and paste the following code into the respective files. Create new Java fil
 #### Entities (in `model` package)
 
 **User.java**
+```java
 package com.example.hotelbooking.model;
 
 import jakarta.persistence.*;
@@ -115,7 +116,9 @@ public class User {
     public void setRole(String role) { this.role = role; }
 }
 ```
+
 **Room.java**
+```java
 package com.example.hotelbooking.model;
 
 import jakarta.persistence.*;
@@ -160,6 +163,7 @@ public class Room {
 ```
 
 **Booking.java**
+```java
 package com.example.hotelbooking.model;
 
 import jakarta.persistence.*;
@@ -811,6 +815,3 @@ spring.thymeleaf.cache=false  # For development
    - Admin: `/admin/login` (use email: admin@example.com, password: adminpass – customize as needed)
 4. Test features: Register a user, book rooms, manage as admin.
 
-
-## License
-MIT License – feel free to use and modify.
