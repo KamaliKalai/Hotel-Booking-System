@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Welcome | Hotel Booking</title>
+    <link rel="stylesheet" th:href="@{/css/welcome.css}">
+</head>
+<body>
+    <div class="container">
+        <h1>🏨 Welcome to Hotel Booking System</h1>
+        <p class="subtitle">Please choose your role to continue</p>
+        <div class="buttons">
+            <a th:href="@{/login}" class="btn user-btn">User Login</a>
+            
+            <a th:href="@{/admin/login}" class="btn admin-btn">Admin Login</a>
+        </div>
+    </div>
+</body>
+</html>
