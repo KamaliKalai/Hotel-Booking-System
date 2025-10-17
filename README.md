@@ -1089,5 +1089,20 @@ spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
 
 ### Step 7: Run the Application
 1. Create the database: Open MySQL and run `CREATE DATABASE hotelbooking;`.
-2. In Eclipse, 
+2. Configure and Run the Application in Eclipse
+    Open the Main Application Class:In Eclipse, navigate to src/main/java/com/example/hotelbooking/HotelbookingApplication.java. The file should contain:
+           package com.example.hotelbooking;
+          import org.springframework.boot.SpringApplication;
+          import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+         @SpringBootApplication
+         public class HotelbookingApplication {
+
+         public static void main(String[] args) {
+        SpringApplication.run(HotelbookingApplication.class, args);
+         }
+             }
+3.Run the Application:Right-click on HotelbookingApplication.java in the Project Explorer.Select Run As > Java Application (or Spring Boot App if available).
+4.Access the Application:Open a browser (e.g., Chrome, Firefox).Navigate to:http://localhost:8080/
+5.Welcome Page: http://localhost:8080/ → User Login (/login) or Admin Login (/admin/login).User Flow: /register → /login → /user/home → /rooms → /book/{roomId} → /bookings.Admin Flow: /admin/login → /admin/home → /admin/addRoom, /admin/edit/{id}, /admin/delete/{id}.
 
