@@ -117,6 +117,8 @@ hotelbooking/
 ├── HELP.md
 ├── README.md
 ├── target/
+
+
 In the `src/main/java/com/example/hotelbooking` folder, create the following sub-packages:
 - `model` (for entities)
 - `dao` (for repositories)
