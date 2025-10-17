@@ -72,7 +72,7 @@ In the `src/main/java/com/example/hotelbooking` folder, create the following sub
 ### Step 6: Add Code to Files
 Copy and paste the following code into the respective files. Create new Java files as needed.
 
-#### Entities (in `model` package)
+#### Entities (in `model` package,create class)
 
 **User.java**
 ```java
@@ -215,7 +215,7 @@ public class Booking {
 }
 ```
 
-#### Repositories (in `dao` package)
+#### Repositories (in `dao` package,create interface)
 
 **UserRepo.java**
 ```java
@@ -262,7 +262,7 @@ public interface BookingRepo extends JpaRepository<Booking, Long> {
 }
 ```
 
-#### Services (in `service` package)
+#### Services (in `service` package,create class)
 
 **UserService.java**
 ```java
@@ -361,7 +361,7 @@ public class BookingService {
 }
 ```
 
-#### Controllers (in `controller` package)
+#### Controllers (in `controller` package,create class)
 Note: These were not fully provided in the source, but based on the templates and services, here's a basic implementation. Add them as new files.
 
 **UserController.java**
