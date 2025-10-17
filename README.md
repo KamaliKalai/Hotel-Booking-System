@@ -75,77 +75,91 @@ Copy and paste the following code into the respective files. Create new Java fil
 #### Entities (in `model` package)
 
 **User.java**
-```java
 package com.example.hotelbooking.model;
 
 import jakarta.persistence.*;
 
 @Entity
 public class User {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    private String name;
-    private String email;
-    private String password;
 
-    public User() {}
-    public User(String name, String email, String password) {
-        this.name = name;
-        this.email = email;
-        this.password = password;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    // 🔑 CORRECTION: Added @Column(unique = true) to enforce uniqueness.
+    @Column(unique = true)
+    private String username;
+    
+    private String password;
+    private String role = "USER";
+
+    public User() {
+    	super();
     }
 
-    // Getters and Setters
+    public User(Long id, String username, String password, String role) {
+        this.id = id;
+        this.username = username;
+        this.password = password;
+        this.role = role;
+    }
+
+    // getters & setters
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    public String getEmail() { return email; }
-    public void setEmail(String email) { this.email = email; }
+    public String getUsername() { return username; }
+    public void setUsername(String username) { this.username = username; }
     public String getPassword() { return password; }
     public void setPassword(String password) { this.password = password; }
+    public String getRole() { return role; }
+    public void setRole(String role) { this.role = role; }
 }
-```
 
 **Room.java**
-```java
 package com.example.hotelbooking.model;
 
 import jakarta.persistence.*;
 
 @Entity
 public class Room {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    private String number;
     private String type;
     private double price;
     private int capacity;
+    // <-- ADD THIS FIELD -->
+    private boolean available = true; 
 
     public Room() {}
-    public Room(String number, String type, double price, int capacity) {
-        this.number = number;
+
+    // Update constructor to include the new field (optional but good practice)
+    public Room(Long id, String type, double price, int capacity, boolean available) {
+        this.id = id;
         this.type = type;
         this.price = price;
         this.capacity = capacity;
+        this.available = available;
     }
 
-    // Getters and Setters
+    // getters & setters
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
-    public String getNumber() { return number; }
-    public void setNumber(String number) { this.number = number; }
     public String getType() { return type; }
     public void setType(String type) { this.type = type; }
     public double getPrice() { return price; }
     public void setPrice(double price) { this.price = price; }
     public int getCapacity() { return capacity; }
     public void setCapacity(int capacity) { this.capacity = capacity; }
+    
+    // <-- ADD THESE METHODS (Setter & Getter) -->
+    public boolean isAvailable() { return available; }
+    public void setAvailable(boolean available) { this.available = available; }
 }
 ```
 
 **Booking.java**
-```java
 package com.example.hotelbooking.model;
 
 import jakarta.persistence.*;
@@ -153,30 +167,45 @@ import java.time.LocalDate;
 
 @Entity
 public class Booking {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @ManyToOne
+    private User user;
 
     @ManyToOne
     private Room room;
 
-    private String userName;
-    private LocalDate checkInDate;
-    private LocalDate checkOutDate;
-    private String status;
+    private LocalDate checkIn;
+    private LocalDate checkOut;
+    private String status = "BOOKED";
 
-    public Booking() {}
+    public Booking() {
+    	super();
+    }
 
-    // Getters and Setters
+    public Booking(Long id, User user, Room room, LocalDate checkIn, LocalDate checkOut, String status) {
+        this.id = id;
+        this.user = user;
+        this.room = room;
+        this.checkIn = checkIn;
+        this.checkOut = checkOut;
+        this.status = status;
+    }
+
+    // getters & setters
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+    public User getUser() { return user; }
+    public void setUser(User user) { this.user = user; }
     public Room getRoom() { return room; }
     public void setRoom(Room room) { this.room = room; }
-    public String getUserName() { return userName; }
-    public void setUserName(String userName) { this.userName = userName; }
-    public LocalDate getCheckInDate() { return checkInDate; }
-    public void setCheckInDate(LocalDate checkInDate) { this.checkInDate = checkInDate; }
-    public LocalDate getCheckOutDate() { return checkOutDate; }
-    public void setCheckOutDate(LocalDate checkOutDate) { this.checkOutDate = checkOutDate; }
+    public LocalDate getCheckIn() { return checkIn; }
+    public void setCheckIn(LocalDate checkIn) { this.checkIn = checkIn; }
+    public LocalDate getCheckOut() { return checkOut; }
+    public void setCheckOut(LocalDate checkOut) { this.checkOut = checkOut; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
 }
