@@ -62,7 +62,61 @@ If you encounter SSL or HTTPS-related errors during Maven builds (common in some
 
 Note: This is a workaround for proxy/SSL issues; use HTTPS in production.
 
-### Step 5: Create Packages
+### Step 5: Project Structure 
+
+hotelbooking/
+├── src/
+│   ├── main/
+│   │   ├── java/com/example/hotelbooking/
+│   │   │   ├── model/
+│   │   │   │   ├── User.java
+│   │   │   │   ├── Room.java
+│   │   │   │   └── Booking.java
+│   │   │   ├── dao/
+│   │   │   │   ├── UserRepo.java
+│   │   │   │   ├── RoomRepo.java
+│   │   │   │   └── BookingRepo.java
+│   │   │   ├── service/
+│   │   │   │   ├── UserService.java
+│   │   │   │   ├── RoomService.java
+│   │   │   │   └── BookingService.java
+│   │   │   ├── controller/
+│   │   │   │   ├── UserController.java
+│   │   │   │   ├── AdminController.java
+│   │   │   │   └── AuthController.java
+│   │   │   └── HotelbookingApplication.java
+│   │   ├── resources/
+│   │   │   ├── templates/
+│   │   │   │   ├── welcome.html
+│   │   │   │   ├── login.html
+│   │   │   │   ├── register.html
+│   │   │   │   ├── user_home.html
+│   │   │   │   ├── rooms.html
+│   │   │   │   ├── book_room.html
+│   │   │   │   ├── bookings.html
+│   │   │   │   ├── admin_login.html
+│   │   │   │   ├── admin_home.html
+│   │   │   │   ├── add_room.html
+│   │   │   │   └── edit_room.html
+│   │   │   ├── static/css/
+│   │   │   │   ├── welcome.css
+│   │   │   │   └── style.css
+│   │   │   └── application.properties
+│   └── test/
+│       └── java/com/example/hotelbooking/
+│           └── HotelbookingApplicationTests.java
+├── .gitattributes
+├── .gitignore
+├── .classpath
+├── .project
+├── .settings/
+├── .mvn/
+├── mvnw
+├── mvnw.cmd
+├── pom.xml
+├── HELP.md
+├── README.md
+├── target/
 In the `src/main/java/com/example/hotelbooking` folder, create the following sub-packages:
 - `model` (for entities)
 - `dao` (for repositories)
