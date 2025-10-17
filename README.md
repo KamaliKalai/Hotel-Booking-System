@@ -225,7 +225,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import com.example.hotelbooking.model.User;
 
 public interface UserRepo extends JpaRepository<User, Long> {
-    User findByEmailAndPassword(String email, String password);
+    User findByUsername(String username);
 }
 ```
 
@@ -244,13 +244,21 @@ public interface RoomRepo extends JpaRepository<Room, Long> {}
 package com.example.hotelbooking.dao;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import com.example.hotelbooking.model.Booking;
-import java.time.LocalDate;
+import com.example.hotelbooking.model.User;
 import java.util.List;
 
 public interface BookingRepo extends JpaRepository<Booking, Long> {
-    List<Booking> findByUserName(String userName);
-    List<Booking> findByRoomIdAndCheckOutDateAfterAndCheckInDateBefore(Long roomId, LocalDate start, LocalDate end);
+    List<Booking> findByUser(User user);
+    
+    // ✅ MUST BE PRESENT: Custom method to delete all bookings for a given room
+ // Inside BookingRepo.java
+    @Modifying
+    @Query("DELETE FROM Booking b WHERE b.room.id = :roomId")
+    void deleteByRoomId(@Param("roomId") Long roomId);
 }
 ```
 
@@ -260,16 +268,30 @@ public interface BookingRepo extends JpaRepository<Booking, Long> {
 ```java
 package com.example.hotelbooking.service;
 
-import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
-import com.example.hotelbooking.model.User;
+import org.springframework.stereotype.Service;
 import com.example.hotelbooking.dao.UserRepo;
+import com.example.hotelbooking.model.User;
 
 @Service
 public class UserService {
-    @Autowired private UserRepo userRepo;
-    public User register(User user) { return userRepo.save(user); }
-    public User login(String email, String password) { return userRepo.findByEmailAndPassword(email, password); }
+    @Autowired
+    private UserRepo userRepo;
+
+    public User register(User user) {
+        if (userRepo.findByUsername(user.getUsername()) != null)
+            throw new RuntimeException("Username already exists!");
+        return userRepo.save(user);
+    }
+
+    public User login(String username, String password) {
+        username = username.trim();
+        password = password.trim();
+        User user = userRepo.findByUsername(username);
+        if (user != null && user.getPassword().equals(password))
+            return user;
+        return null;
+    }
 }
 ```
 
@@ -277,19 +299,36 @@ public class UserService {
 ```java
 package com.example.hotelbooking.service;
 
-import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
-import java.util.List;
-import com.example.hotelbooking.model.Room;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional; // ⬅️ NEW: Required for database transaction
 import com.example.hotelbooking.dao.RoomRepo;
+import com.example.hotelbooking.dao.BookingRepo; // ⬅️ NEW: Required to delete related bookings
+import com.example.hotelbooking.model.Room;
+import java.util.List;
 
 @Service
 public class RoomService {
-    @Autowired private RoomRepo roomRepo;
-    public List<Room> getAll() { return roomRepo.findAll(); }
-    public Room getById(Long id) { return roomRepo.findById(id).orElse(null); }
-    public Room save(Room room) { return roomRepo.save(room); }
-    public void delete(Long id) { roomRepo.deleteById(id); }
+    
+    @Autowired
+    private RoomRepo roomRepo;
+    
+    @Autowired 
+    private BookingRepo bookingRepo; // ⬅️ Inject the BookingRepo
+    
+    public Room addRoom(Room room) { return roomRepo.save(room); }
+    public List<Room> getAllRooms() { return roomRepo.findAll(); }
+    public Room getRoomById(Long id) { return roomRepo.findById(id).orElse(null); }
+    
+    // ⬇️ FIX: This method now correctly handles the foreign key constraint
+    @Transactional
+    public void deleteRoom(Long id) { 
+        // 1. Delete all bookings referencing this room ID (the child records)
+        bookingRepo.deleteByRoomId(id);
+        
+        // 2. Now delete the room (the parent record)
+        roomRepo.deleteById(id);
+    }
 }
 ```
 
@@ -297,29 +336,27 @@ public class RoomService {
 ```java
 package com.example.hotelbooking.service;
 
-import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
-import java.time.LocalDate;
-import java.util.List;
+import org.springframework.stereotype.Service;
 import com.example.hotelbooking.dao.BookingRepo;
 import com.example.hotelbooking.model.Booking;
+import com.example.hotelbooking.model.User;
+import java.util.List;
 
 @Service
 public class BookingService {
-    @Autowired private BookingRepo bookingRepo;
+    @Autowired
+    private BookingRepo bookingRepo;
 
-    public List<Booking> getAll() { return bookingRepo.findAll(); }
-    public List<Booking> getByUser(String userName) { return bookingRepo.findByUserName(userName); }
+    public Booking bookRoom(Booking booking) { return bookingRepo.save(booking); }
+    public List<Booking> getUserBookings(User user) { return bookingRepo.findByUser(user); }
 
-    public boolean isAvailable(Long roomId, LocalDate checkIn, LocalDate checkOut) {
-        return bookingRepo.findByRoomIdAndCheckOutDateAfterAndCheckInDateBefore(roomId, checkIn, checkOut).isEmpty();
-    }
-
-    public Booking create(Booking booking) { return bookingRepo.save(booking); }
-
-    public void cancel(Long id) {
-        Booking b = bookingRepo.findById(id).orElse(null);
-        if (b != null) { b.setStatus("CANCELLED"); bookingRepo.save(b); }
+    public void cancelBooking(Long id) {
+        Booking booking = bookingRepo.findById(id).orElse(null);
+        if (booking != null) {
+            booking.setStatus("CANCELLED");
+            bookingRepo.save(booking);
+        }
     }
 }
 ```
@@ -335,87 +372,61 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
-import com.example.hotelbooking.model.*;
-import com.example.hotelbooking.service.*;
+import com.example.hotelbooking.service.RoomService;
+import com.example.hotelbooking.service.BookingService;
+import com.example.hotelbooking.model.Booking;
+import com.example.hotelbooking.model.Room;
+import com.example.hotelbooking.model.User;
 import jakarta.servlet.http.HttpSession;
 import java.time.LocalDate;
+import java.util.List;
 
 @Controller
 public class UserController {
-
-    @Autowired private UserService userService;
     @Autowired private RoomService roomService;
     @Autowired private BookingService bookingService;
 
-    @GetMapping("/register")
-    public String registerForm(Model model) {
-        model.addAttribute("user", new User());
-        return "register";
-    }
-
-    @PostMapping("/register")
-    public String register(@ModelAttribute User user, HttpSession session) {
-        userService.register(user);
-        session.setAttribute("user", user.getName());
-        return "redirect:/rooms";
-    }
-
-    @GetMapping("/login")
-    public String loginForm() {
-        return "login";
-    }
-
-    @PostMapping("/login")
-    public String login(@RequestParam String email, @RequestParam String password, Model model, HttpSession session) {
-        User user = userService.login(email, password);
-        if (user != null) {
-            session.setAttribute("user", user.getName());
-            return "redirect:/rooms";
-        }
-        model.addAttribute("error", "Invalid credentials");
-        return "login";
-    }
+    @GetMapping("/user/home")
+    public String userHome(Model model) { model.addAttribute("message", "Welcome to User Dashboard!"); return "user_home"; }
 
     @GetMapping("/rooms")
-    public String rooms(Model model, HttpSession session) {
-        String userName = (String) session.getAttribute("user");
-        if (userName == null) return "redirect:/login";
-        model.addAttribute("rooms", roomService.getAll());
-        model.addAttribute("userName", userName);
-        return "rooms";
+    public String viewRooms(Model model) { model.addAttribute("rooms", roomService.getAllRooms()); return "rooms"; }
+
+    @GetMapping("/book/{roomId}")
+    public String bookRoomForm(@PathVariable Long roomId, Model model) {
+        model.addAttribute("room", roomService.getRoomById(roomId));
+        return "book_room";
     }
 
-    @GetMapping("/book/{id}")
-    public String bookForm(@PathVariable Long id, @RequestParam String user, Model model) {
-        Room room = roomService.getById(id);
+    @PostMapping("/book")
+    public String bookRoom(@RequestParam Long roomId, @RequestParam String checkIn, @RequestParam String checkOut, HttpSession session, Model model) {
+        User user = (User) session.getAttribute("user");
+        Room room = roomService.getRoomById(roomId);
+        
+        if (user == null) return "redirect:/login";
+        
+        LocalDate inDate = LocalDate.parse(checkIn);
+        LocalDate outDate = LocalDate.parse(checkOut);
+
         Booking booking = new Booking();
-        booking.setRoom(room);
-        booking.setUserName(user);
-        model.addAttribute("booking", booking);
-        return "booking-form";
-    }
-
-    @PostMapping("/book/save")
-    public String saveBooking(@ModelAttribute Booking booking, Model model) {
-        if (!bookingService.isAvailable(booking.getRoom().getId(), booking.getCheckInDate(), booking.getCheckOutDate())) {
-            model.addAttribute("error", "Room not available");
-            return "booking-form";
-        }
-        booking.setStatus("BOOKED");
-        bookingService.create(booking);
-        return "redirect:/bookings?user=" + booking.getUserName();
+        booking.setUser(user); booking.setRoom(room);
+        booking.setCheckIn(inDate); booking.setCheckOut(outDate);
+        bookingService.bookRoom(booking);
+        return "redirect:/bookings";
     }
 
     @GetMapping("/bookings")
-    public String userBookings(@RequestParam String user, Model model) {
-        model.addAttribute("bookings", bookingService.getByUser(user));
-        return "booking-list";
+    public String viewBookings(HttpSession session, Model model) {
+        User user = (User) session.getAttribute("user");
+        if (user == null) return "redirect:/login";
+        model.addAttribute("bookings", bookingService.getUserBookings(user));
+        return "bookings";
     }
 
-    @GetMapping("/bookings/cancel/{id}")
-    public String cancelBooking(@PathVariable Long id, @RequestParam String user) {
-        bookingService.cancel(id);
-        return "redirect:/bookings?user=" + user;
+    @GetMapping("/cancel/{bookingId}")
+    public String cancelBooking(@PathVariable Long bookingId) { 
+        bookingService.cancelBooking(bookingId); 
+        return "redirect:/bookings"; 
     }
 }
 ```
@@ -428,97 +439,217 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
-import com.example.hotelbooking.model.*;
-import com.example.hotelbooking.service.*;
+import com.example.hotelbooking.model.Room;
+import com.example.hotelbooking.model.User;
+import com.example.hotelbooking.service.RoomService;
 import jakarta.servlet.http.HttpSession;
 
 @Controller
 @RequestMapping("/admin")
 public class AdminController {
+    
+    @Autowired 
+    private RoomService roomService;
 
-    @Autowired private UserService userService; // Assuming admin uses same User table or separate logic
-    @Autowired private RoomService roomService;
-    @Autowired private BookingService bookingService;
-
-    @GetMapping("/login")
-    public String adminLoginForm() {
-        return "admin-login";
+    // Helper method to check for ADMIN role and authentication
+    private boolean isAdmin(HttpSession session) {
+        User user = (User) session.getAttribute("user");
+        return user != null && "ADMIN".equals(user.getRole());
     }
 
-    @PostMapping("/login")
-    public String adminLogin(@RequestParam String email, @RequestParam String password, Model model, HttpSession session) {
-        // For simplicity, assume admin credentials are hardcoded or use a specific user
-        if ("admin@example.com".equals(email) && "adminpass".equals(password)) { // Replace with proper auth
-            session.setAttribute("admin", true);
-            return "redirect:/admin/rooms";
+    @GetMapping("/home")
+    public String adminHome(Model model, HttpSession session) {
+        // Redirect to dedicated admin login if unauthorized
+        if (!isAdmin(session)) {
+            return "redirect:/admin/login"; 
         }
-        model.addAttribute("error", "Invalid admin credentials");
-        return "admin-login";
+        model.addAttribute("rooms", roomService.getAllRooms());
+        return "admin_home"; 
     }
 
-    @GetMapping("/rooms")
-    public String adminRooms(Model model, HttpSession session) {
-        if (session.getAttribute("admin") == null) return "redirect:/admin/login";
-        model.addAttribute("rooms", roomService.getAll());
-        return "admin-rooms";
+    @GetMapping("/addRoom")
+    public String addRoomForm(Model model, HttpSession session) {
+        if (!isAdmin(session)) {
+            return "redirect:/admin/login";
+        }
+        Room newRoom = new Room(); 
+        // Ensure the default available status is set
+        newRoom.setAvailable(true); 
+        model.addAttribute("room", newRoom);
+        return "add_room";
     }
 
-    @GetMapping("/room/add")
-    public String addRoomForm(Model model) {
-        model.addAttribute("room", new Room());
-        return "admin-room-form";
+    @PostMapping("/addRoom")
+    public String addRoom(@ModelAttribute Room room, HttpSession session) {
+        if (!isAdmin(session)) {
+            return "redirect:/admin/login";
+        }
+        roomService.addRoom(room); 
+        return "redirect:/admin/home"; 
     }
 
-    @GetMapping("/room/edit/{id}")
-    public String editRoomForm(@PathVariable Long id, Model model) {
-        model.addAttribute("room", roomService.getById(id));
-        return "admin-room-form";
+    @GetMapping("/edit/{id}")
+    public String editRoomForm(@PathVariable Long id, Model model, HttpSession session) {
+        if (!isAdmin(session)) {
+            return "redirect:/admin/login";
+        }
+        model.addAttribute("room", roomService.getRoomById(id)); 
+        return "edit_room"; 
     }
 
-    @PostMapping("/room/save")
-    public String saveRoom(@ModelAttribute Room room) {
-        roomService.save(room);
-        return "redirect:/admin/rooms";
+    @PostMapping("/edit")
+    public String editRoom(@ModelAttribute Room room, HttpSession session) {
+        if (!isAdmin(session)) {
+            return "redirect:/admin/login";
+        }
+        roomService.addRoom(room); 
+        return "redirect:/admin/home"; 
     }
 
-    @GetMapping("/room/delete/{id}")
-    public String deleteRoom(@PathVariable Long id) {
-        roomService.delete(id);
-        return "redirect:/admin/rooms";
+    @GetMapping("/delete/{id}")
+    public String deleteRoom(@PathVariable Long id, HttpSession session) {
+        if (!isAdmin(session)) {
+            return "redirect:/admin/login";
+        }
+        roomService.deleteRoom(id); 
+        return "redirect:/admin/home"; 
+    }
     }
 
-    @GetMapping("/bookings")
-    public String adminBookings(Model model, HttpSession session) {
-        if (session.getAttribute("admin") == null) return "redirect:/admin/login";
-        model.addAttribute("bookings", bookingService.getAll());
-        return "admin-bookings";
+```
+
+
+**AuthController.java**
+```java
+package com.example.hotelbooking.controller;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.*;
+import com.example.hotelbooking.model.User;
+import com.example.hotelbooking.service.UserService;
+import jakarta.servlet.http.HttpSession;
+
+@Controller
+public class AuthController {
+    @Autowired
+    private UserService userService;
+
+    // 1. Welcome page mapping
+    @GetMapping("/")
+    public String welcomePage() {
+        return "welcome";
     }
+
+    // 2. User Registration Page
+    @GetMapping("/register")
+    public String showRegisterPage(Model model) {
+        model.addAttribute("user", new User());
+        return "register";
+    }
+
+    @PostMapping("/register")
+    public String registerUser(@ModelAttribute User user, Model model) {
+        try { userService.register(user); return "redirect:/login"; }
+        catch (RuntimeException e) { model.addAttribute("error", e.getMessage()); return "register"; }
+    }
+
+    // 3. Generic Login Page (Used by User Login button from welcome)
+    @GetMapping("/login")
+    public String showLoginPage(Model model) {
+        model.addAttribute("user", new User());
+        return "login";
+    }
+
+    // 4. Generic Login POST Handler (Handles both USER and ADMIN)
+    @PostMapping("/login")
+    public String loginUser(@ModelAttribute User user, HttpSession session, Model model) {
+        User u = userService.login(user.getUsername(), user.getPassword());
+        if (u != null) {
+            session.setAttribute("user", u);
+            if ("ADMIN".equals(u.getRole())) return "redirect:/admin/home";
+            return "redirect:/user/home";
+        } else {
+            model.addAttribute("error", "Invalid username or password");
+            return "login";
+        }
+    }
+    
+    // 5. ADMIN Login Page (Dedicated page for admin credentials)
+    @GetMapping("/admin/login")
+    public String showAdminLoginPage(Model model) {
+        model.addAttribute("user", new User());
+        return "admin_login"; // Use new admin_login.html
+    }
+
+    // 6. ADMIN Login POST Handler (Strictly checks for ADMIN role)
+    @PostMapping("/admin/login")
+    public String loginAdmin(@ModelAttribute User user, HttpSession session, Model model) {
+        User u = userService.login(user.getUsername(), user.getPassword());
+        if (u != null && "ADMIN".equals(u.getRole())) {
+            session.setAttribute("user", u);
+            return "redirect:/admin/home";
+        } else {
+            model.addAttribute("error", "Invalid credentials or unauthorized user.");
+            return "admin_login";
+        }
+    }
+
+
+    @GetMapping("/logout")
+    public String logout(HttpSession session) { session.invalidate(); return "redirect:/login"; }
 }
+
+
 ```
 
 #### Thymeleaf Templates (in `src/main/resources/templates`)
 Create the following HTML files.
 
-**login.html**
+**welcome.html**
 ```html
 <!DOCTYPE html>
-<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
-    <title>User Login</title>
-    <link rel="stylesheet" href="/css/login.css">
+    <title>Welcome | Hotel Booking</title>
+    <link rel="stylesheet" th:href="@{/css/welcome.css}">
 </head>
 <body>
     <div class="container">
-        <h2>User Login</h2>
-        <form th:action="@{/login}" method="post">
-            <input type="email" name="email" placeholder="Email" required>
-            <input type="password" name="password" placeholder="Password" required>
-            <button type="submit">Login</button>
-        </form>
-        <p th:text="${error}"></p>
-        <a href="/register">Register</a>
+        <h1>🏨 Welcome to Hotel Booking System</h1>
+        <p class="subtitle">Please choose your role to continue</p>
+        <div class="buttons">
+            <a th:href="@{/login}" class="btn user-btn">User Login</a>
+            
+            <a th:href="@{/admin/login}" class="btn admin-btn">Admin Login</a>
+        </div>
     </div>
+</body>
+</html>
+```
+
+**login.html**
+```html
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>User Login | Hotel Booking</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+<div class="container">
+    <h2>User Login</h2>
+    <form th:action="@{/login}" th:object="${user}" method="post">
+        <input type="text" th:field="*{username}" placeholder="Username" required>
+        <input type="password" th:field="*{password}" placeholder="Password" required>
+        <button type="submit">Login</button>
+        <p th:if="${error}" th:text="${error}" style="color:red;"></p>
+        <p>Don't have an account? <a th:href="@{/register}">Register here</a></p>
+    </form>
+    <a th:href="@{/}" class="btn" style="background-color: gray;">Back to Welcome</a>
+</div>
 </body>
 </html>
 ```
@@ -526,279 +657,434 @@ Create the following HTML files.
 **register.html**
 ```html
 <!DOCTYPE html>
-<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.thymeleaf.org">
 <head>
-    <meta charset="UTF-8">
-    <title>User Registration</title>
-    <link rel="stylesheet" href="/css/register.css">
+    <title>Register | Hotel Booking</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
 </head>
 <body>
-    <div class="container">
-        <h2>User Registration</h2>
-        <form th:action="@{/register}" th:object="${user}" method="post">
-            <input type="text" th:field="*{name}" placeholder="Name" required>
-            <input type="email" th:field="*{email}" placeholder="Email" required>
-            <input type="password" th:field="*{password}" placeholder="Password" required>
-            <button type="submit">Register</button>
-        </form>
-        <a href="/login">Already have an account? Login</a>
-    </div>
+<div class="container">
+    <h2>Register</h2>
+    <form th:action="@{/register}" th:object="${user}" method="post">
+        <input type="text" th:field="*{username}" placeholder="Username" required>
+        <input type="password" th:field="*{password}" placeholder="Password" required>
+        <button type="submit">Register</button>
+        <p th:if="${error}" th:text="${error}" style="color:red;"></p>
+        <p>Already have an account? <a th:href="@{/login}">Login</a></p>
+    </form>
+</div>
 </body>
 </html>
+```
+
+**user_home.html**
+```html
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>User Dashboard</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+<div class="navbar">
+    <h2>User Dashboard</h2>
+</div>
+<div class="container">
+    <h3 th:text="${message}"></h3> <center>
+    <a th:href="@{/rooms}" class="btn" style="background-color: #4CAF50;">View Rooms</a><br><br>
+    
+    <a th:href="@{/bookings}" class="btn" style="background-color: #2196F3;">My Bookings</a><br><br>
+    <a th:href="@{/logout}" class="btn">Logout</a><br><br>
+   <a th:href="@{/}" class="btn" style="background-color: gray;">Back to Welcome</a>  </center>
+    
+</div>
+</body>
+</html>
+
 ```
 
 **rooms.html**
 ```html
 <!DOCTYPE html>
-<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.thymeleaf.org">
 <head>
-    <meta charset="UTF-8">
     <title>Available Rooms</title>
-    <link rel="stylesheet" href="/css/rooms.css">
+    <link rel="stylesheet" th:href="@{/css/style.css}">
 </head>
 <body>
-    <div class="container">
-        <h2>Available Rooms</h2>
-        <table>
-            <tr>
-                <th>Number</th>
-                <th>Type</th>
-                <th>Price</th>
-                <th>Capacity</th>
-                <th>Action</th>
-            </tr>
-            <tr th:each="room : ${rooms}">
-                <td th:text="${room.number}"></td>
-                <td th:text="${room.type}"></td>
-                <td th:text="${room.price}"></td>
-                <td th:text="${room.capacity}"></td>
-                <td>
-                    <a th:href="@{'/book/' + ${room.id} + '?user=' + ${userName}}">Book</a>
-                </td>
-            </tr>
-        </table>
-    </div>
+<div class="navbar">
+    <h2>Available Rooms</h2>
+</div>
+<div class="container" style="max-width: 800px;">
+    <table>
+        <tr><th>ID</th><th>Type</th><th>Price</th><th>Capacity</th><th>Action</th></tr>
+        <tr th:each="room : ${rooms}">
+            <td th:text="${room.id}"></td>
+            <td th:text="${room.type}"></td>
+            <td th:text="${room.price}"></td>
+            <td th:text="${room.capacity}"></td>
+            <td><a th:href="@{'/book/' + ${room.id}}" class="btn" style="background-color: #00bcd4;">Book</a></td>
+        </tr>
+    </table>
+    <a th:href="@{/user/home}" class="btn">Back</a>
+</div>
 </body>
 </html>
 ```
 
-**booking-form.html**
+**book_room.html**
 ```html
 <!DOCTYPE html>
-<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.thymeleaf.org">
 <head>
-    <meta charset="UTF-8">
     <title>Book Room</title>
-    <link rel="stylesheet" href="/css/rooms.css">
+    <link rel="stylesheet" th:href="@{/css/style.css}">
 </head>
 <body>
-    <div class="container">
-        <h2>Book Room [[${booking.room.number}]]</h2>
-        <form th:action="@{/book/save}" th:object="${booking}" method="post">
-            <input type="hidden" th:field="*{room.id}"/>
-            <label>Name</label>
-            <input type="text" th:field="*{userName}" readonly/><br/>
-            <label>Check-in Date</label>
-            <input type="date" th:field="*{checkInDate}" required/><br/>
-            <label>Check-out Date</label>
-            <input type="date" th:field="*{checkOutDate}" required/><br/>
-            <button type="submit">Book</button>
-        </form>
-        <p th:text="${error}"></p>
-    </div>
+<div class="navbar">
+    <h2>Book Room: <span th:text="${room.type}"></span></h2>
+</div>
+<div class="container">
+    <form th:action="@{/book}" method="post">
+        <input type="hidden" name="roomId" th:value="${room.id}">
+        <label>Room ID:</label> <span th:text="${room.id}"></span><br>
+        <label>Price:</label> <span th:text="${room.price}"></span><br><br>
+        
+        <label for="checkIn">Check-in Date:</label>
+        <input type="date" id="checkIn" name="checkIn" required>
+        
+        <label for="checkOut">Check-out Date:</label>
+        <input type="date" id="checkOut" name="checkOut" required>
+
+        <button type="submit">Book Now</button>
+        <p th:if="${error}" th:text="${error}" style="color:red;"></p>
+    </form>
+    <a th:href="@{/rooms}" class="btn">Back</a>
+</div>
 </body>
 </html>
 ```
 
-**booking-list.html**
+**bookings.html**
 ```html
 <!DOCTYPE html>
-<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.thymeleaf.org">
 <head>
-    <meta charset="UTF-8">
     <title>My Bookings</title>
-    <link rel="stylesheet" href="/css/rooms.css">
+    <link rel="stylesheet" th:href="@{/css/style.css}">
 </head>
 <body>
-    <div class="container">
-        <h2>My Bookings</h2>
-        <table>
-            <tr>
-                <th>Room Number</th>
-                <th>Check-in</th>
-                <th>Check-out</th>
-                <th>Status</th>
-                <th>Action</th>
-            </tr>
-            <tr th:each="b : ${bookings}">
-                <td th:text="${b.room.number}"></td>
-                <td th:text="${b.checkInDate}"></td>
-                <td th:text="${b.checkOutDate}"></td>
-                <td th:text="${b.status}"></td>
-                <td>
-                    <span th:if="${b.status=='BOOKED'}">
-                        <a th:href="@{'/bookings/cancel/' + ${b.id} + '?user=' + ${b.userName}}">Cancel</a>
-                    </span>
-                </td>
-            </tr>
-        </table>
-    </div>
+<div class="navbar">
+    <h2>My Bookings</h2>
+</div>
+<div class="container" style="max-width: 800px;">
+    <table>
+        <tr><th>ID</th><th>Room Type</th><th>Check-In</th><th>Check-Out</th><th>Status</th><th>Action</th></tr>
+        <tr th:each="b : ${bookings}">
+            <td th:text="${b.id}"></td>
+            <td th:text="${b.room.type}"></td>
+            <td th:text="${b.checkIn}"></td>
+            <td th:text="${b.checkOut}"></td>
+            <td th:text="${b.status}"></td>
+            <td>
+                <a th:if="${b.status=='BOOKED'}" th:href="@{'/cancel/' + ${b.id}}" class="btn" style="background-color: #f44336;">Cancel</a>
+            </td>
+        </tr>
+    </table>
+    <a th:href="@{/user/home}" class="btn">Back</a>
+</div>
 </body>
 </html>
 ```
 
-**admin-login.html**
+**admin_login.html**
 ```html
 <!DOCTYPE html>
-<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.thymeleaf.org">
 <head>
-    <meta charset="UTF-8">
-    <title>Admin Login</title>
-    <link rel="stylesheet" href="/css/admin.css">
+    <title>Admin Login | Hotel Booking</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
 </head>
 <body>
-    <div class="container">
-        <h2>Admin Login</h2>
-        <form th:action="@{/admin/login}" method="post">
-            <input type="email" name="email" placeholder="Email" required>
-            <input type="password" name="password" placeholder="Password" required>
-            <button type="submit">Login</button>
-        </form>
-        <p th:text="${error}"></p>
-    </div>
+<div class="container">
+    <h2>Admin Login</h2>
+    <form th:action="@{/admin/login}" th:object="${user}" method="post">
+        <input type="text" th:field="*{username}" placeholder="Admin Username" required>
+        <input type="password" th:field="*{password}" placeholder="Admin Password" required>
+        <button type="submit">Login as Admin</button>
+        <p th:if="${error}" th:text="${error}" style="color:red;"></p>
+    </form>
+    <a th:href="@{/}" class="btn" style="background-color: gray;">Back to Welcome</a>
+</div>
 </body>
 </html>
 ```
 
-**admin-rooms.html**
+**admin_home.html**
 ```html
 <!DOCTYPE html>
-<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.thymeleaf.org">
 <head>
-    <meta charset="UTF-8">
-    <title>Manage Rooms</title>
-    <link rel="stylesheet" href="/css/admin.css">
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
 </head>
 <body>
-    <div class="container">
-        <h2>All Rooms</h2>
-        <a href="/admin/room/add">Add Room</a>
-        <table>
-            <tr>
-                <th>Number</th><th>Type</th><th>Price</th><th>Capacity</th><th>Action</th>
-            </tr>
-            <tr th:each="room : ${rooms}">
-                <td th:text="${room.number}"></td>
-                <td th:text="${room.type}"></td>
-                <td th:text="${room.price}"></td>
-                <td th:text="${room.capacity}"></td>
-                <td>
-                    <a th:href="@{'/admin/room/edit/' + ${room.id}}">Edit</a> |
-                    <a th:href="@{'/admin/room/delete/' + ${room.id}}">Delete</a>
-                </td>
-            </tr>
-        </table>
-    </div>
+<div class="navbar">
+    <h2>Admin Dashboard</h2>
+</div>
+<div class="container" style="max-width: 800px;">
+    <a th:href="@{/admin/addRoom}" class="btn" style="background-color: #4CAF50;">Add Room</a>
+    <a th:href="@{/logout}" class="btn">Logout</a>
+     <a th:href="@{/}" class="btn" style="background-color: gray;">Back to Welcome</a>
+    <table>
+        <tr><th>ID</th><th>Type</th><th>Price</th><th>Capacity</th><th>Actions</th></tr>
+        <tr th:each="room : ${rooms}">
+            <td th:text="${room.id}"></td>
+            <td th:text="${room.type}"></td>
+            <td th:text="${room.price}"></td>
+            <td th:text="${room.capacity}"></td>
+            
+               <td>
+    <a th:href="@{'/admin/edit/' + ${room.id}}" class="btn" style="background-color: #2196F3;">Edit</a>
+    <a th:href="@{'/admin/delete/' + ${room.id}}" class="btn" style="background-color: #f44336;">Delete</a>
+    
+</td>
+        </tr>
+    </table>
+</div>
 </body>
 </html>
 ```
 
-**admin-room-form.html**
+**add_room.html**
 ```html
 <!DOCTYPE html>
-<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.thymeleaf.org">
 <head>
-    <meta charset="UTF-8">
-    <title>Room Form</title>
-    <link rel="stylesheet" href="/css/admin.css">
+    <title>Add Room</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
 </head>
 <body>
-    <div class="container">
-        <h2>Room Form</h2>
-        <form th:action="@{/admin/room/save}" th:object="${room}" method="post">
-            <label>Number</label><input type="text" th:field="*{number}" required/><br/>
-            <label>Type</label><input type="text" th:field="*{type}" required/><br/>
-            <label>Price</label><input type="number" th:field="*{price}" required/><br/>
-            <label>Capacity</label><input type="number" th:field="*{capacity}" required/><br/>
-            <button type="submit">Save</button>
-        </form>
-    </div>
+<div class="container">
+    <h2>Add Room</h2>
+    <form th:action="@{/admin/addRoom}" th:object="${room}" method="post">
+        <input type="text" th:field="*{type}" placeholder="Room Type (e.g., Single, Double, Suite)" required>
+        <input type="number" th:field="*{price}" placeholder="Price (e.g., 150.00)" step="0.01" required>
+        <input type="number" th:field="*{capacity}" placeholder="Capacity (e.g., 2)" required>
+        <button type="submit">Save Room</button>
+    </form>
+    <a th:href="@{/admin/home}" class="btn">Back</a>
+</div>
 </body>
 </html>
 ```
 
-**admin-bookings.html**
+**edit_room.html**
 ```html
 <!DOCTYPE html>
-<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.thymeleaf.org">
 <head>
-    <meta charset="UTF-8">
-    <title>All Bookings</title>
-    <link rel="stylesheet" href="/css/admin.css">
+    <title>Edit Room</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
 </head>
 <body>
-    <div class="container">
-        <h2>All Bookings</h2>
-        <table>
-            <tr>
-                <th>Room Number</th><th>User</th><th>Check-in</th><th>Check-out</th><th>Status</th>
-            </tr>
-            <tr th:each="b : ${bookings}">
-                <td th:text="${b.room.number}"></td>
-                <td th:text="${b.userName}"></td>
-                <td th:text="${b.checkInDate}"></td>
-                <td th:text="${b.checkOutDate}"></td>
-                <td th:text="${b.status}"></td>
-            </tr>
-        </table>
-    </div>
+<div class="container">
+    <h2>Edit Room</h2>
+    <form th:action="@{/admin/edit}" th:object="${room}" method="post">
+        <input type="hidden" th:field="*{id}">
+        <label>Room ID: <span th:text="*{id}"></span></label>
+        <input type="text" th:field="*{type}" placeholder="Room Type" required>
+        <input type="number" th:field="*{price}" placeholder="Price" step="0.01" required>
+        <input type="number" th:field="*{capacity}" placeholder="Capacity" required>
+        <button type="submit">Update Room</button>
+    </form>
+    <a th:href="@{/admin/home}" class="btn">Back</a>
+</div>
 </body>
 </html>
 ```
 
 #### CSS Files (in `src/main/resources/static/css`)
 Create a `css` folder under `static` and add these files.
-
-**login.css** (same for register.css, you can copy or link)
+**welcome.css**
 ```css
-body { background: linear-gradient(135deg,#89f7fe,#66a6ff); font-family:'Poppins',sans-serif; display:flex; justify-content:center; align-items:center; height:100vh; margin:0;}
-.container { background:#fff; padding:40px; border-radius:15px; text-align:center; width:350px; box-shadow:0 3px 10px rgba(0,0,0,0.2);}
-input { width:100%; padding:10px; margin:10px 0; border-radius:5px; border:1px solid #ddd;}
-button { background:#007bff; color:#fff; padding:10px 30px; border:none; border-radius:5px; cursor:pointer;}
-button:hover{ background:#0056b3;}
-a{ display:block; margin-top:15px; color:#007bff; text-decoration:none;}
-a:hover{text-decoration:underline;}
+body {
+    font-family: 'Arial', sans-serif;
+    background-color: #f5f0ff; 
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    text-align: center;
+}
+
+.container {
+    background: white;
+    padding: 40px 60px;
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    width: 90%;
+    max-width: 500px;
+}
+
+h1 {
+    color: #333;
+    margin-bottom: 10px;
+}
+
+.subtitle {
+    color: #666;
+    margin-bottom: 30px;
+    font-size: 1.1em;
+}
+
+.buttons {
+    display: flex;
+    justify-content: space-around;
+    gap: 20px;
+    margin-top: 30px;
+}
+
+.btn {
+    padding: 15px 30px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: bold;
+    flex-grow: 1;
+    transition: background-color 0.3s ease, transform 0.2s;
+}
+
+.user-btn {
+    background-color: #7b42f6;
+    color: white;
+    border: 2px solid #7b42f6;
+}
+
+.user-btn:hover {
+    background-color: #5e2dc4;
+    transform: translateY(-2px);
+}
+
+.admin-btn {
+    background-color: #ff6f91;
+    color: white;
+    border: 2px solid #ff6f91;
+}
+
+.admin-btn:hover {
+    background-color: #ff4f7b;
+    transform: translateY(-2px);
+}
 ```
 
-**rooms.css**
+**style.css** 
 ```css
-body{ background:#f1f1f1; font-family:'Poppins',sans-serif; margin:0; display:flex; justify-content:center; align-items:flex-start; padding-top:50px;}
-.container{ background:#fff; padding:20px; border-radius:10px; width:80%; max-width:800px;}
-table{ width:100%; border-collapse:collapse;}
-th,td{ border:1px solid #ddd; padding:10px; text-align:center;}
-th{ background:#007bff; color:white;}
-a{ color:#007bff; text-decoration:none;}
-a:hover{ text-decoration:underline;}
-button{ background:#28a745; color:white; border:none; padding:5px 15px; border-radius:5px; cursor:pointer;}
-button:hover{ background:#218838;}
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f5f0ff;
+    margin: 0;
+    padding: 0;
+}
+
+.container {
+    background: white;
+    padding: 25px;
+    margin: 50px auto;
+    border-radius: 10px;
+    width: 90%;
+    max-width: 450px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.2);
+}
+
+h2, h3 {
+    text-align: center;
+    color: #333;
+}
+
+form {
+    display: flex;
+    flex-direction: column;
+}
+
+input, select, button {
+    margin: 8px 0;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+}
+
+button {
+    background-color: #7b42f6;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: #5e2dc4;
+}
+
+a {
+    color: #7b42f6;
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 20px auto;
+}
+
+table, th, td {
+    border: 1px solid gray;
+    padding: 10px;
+    text-align: center;
+}
+
+.navbar {
+    background-color: #ff6f91;
+    padding: 15px;
+    color: white;
+    text-align: center;
+}
+
+.btn {
+    background-color: #ff6f91;
+    color: white;
+    padding: 8px 15px;
+    margin: 5px;
+    border-radius: 6px;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.btn:hover {
+    background-color: #ff4f7b;
+}
 ```
 
-**admin.css**
-```css
-body{ background: linear-gradient(135deg,#667eea,#764ba2); font-family:'Poppins',sans-serif; margin:0; display:flex; justify-content:center; align-items:flex-start; padding-top:50px; color:white;}
-.container{ background:#fff; color:#333; padding:20px; border-radius:10px; width:80%; max-width:800px;}
-table{ width:100%; border-collapse:collapse;}
-th,td{ border:1px solid #ddd; padding:10px; text-align:center;}
-th{ background:#6c63ff; color:white;}
-a{ color:#6c63ff; text-decoration:none;}
-a:hover{ text-decoration:underline;}
-button{ background:#6c63ff; color:white; border:none; padding:5px 15px; border-radius:5px; cursor:pointer;}
-button:hover{ background:#5548c8;}
+
 ```
+
+
 
 #### Application Properties (in `src/main/resources/application.properties`)
 Update with your MySQL details:
 ```properties
+
+spring.application.name=hotelbooking
+spring.datasource.url=jdbc:mysql://localhost:3306/besant
+spring.datasource.username=root
+spring.datasource.password=Algoritz@123
+spring.jpa.hibernate.ddl-auto=update
+spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+
+
 spring.datasource.url=jdbc:mysql://localhost:3306/hotelbooking?createDatabaseIfNotExist=true
 spring.datasource.username=root
 spring.datasource.password=yourpassword  # Replace with your MySQL password
