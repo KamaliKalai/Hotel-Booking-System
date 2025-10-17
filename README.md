@@ -1101,8 +1101,10 @@ spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
          public static void main(String[] args) {
         SpringApplication.run(HotelbookingApplication.class, args);
          }
-             }
+             } .
 3.Run the Application:Right-click on HotelbookingApplication.java in the Project Explorer.Select Run As > Java Application (or Spring Boot App if available).
+
 4.Access the Application:Open a browser (e.g., Chrome, Firefox).Navigate to:http://localhost:8080/
+
 5.Welcome Page: http://localhost:8080/ → User Login (/login) or Admin Login (/admin/login).User Flow: /register → /login → /user/home → /rooms → /book/{roomId} → /bookings.Admin Flow: /admin/login → /admin/home → /admin/addRoom, /admin/edit/{id}, /admin/delete/{id}.
 
