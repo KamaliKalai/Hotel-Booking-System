@@ -1069,7 +1069,6 @@ table, th, td {
 ```
 
 
-```
 
 
 
@@ -1078,26 +1077,17 @@ Update with your MySQL details:
 ```properties
 
 spring.application.name=hotelbooking
-spring.datasource.url=jdbc:mysql://localhost:3306/besant
+spring.datasource.url=jdbc:mysql://localhost:3306/besant  # besant-database name
 spring.datasource.username=root
-spring.datasource.password=Algoritz@123
+spring.datasource.password=Algoritz@123  # Replace with your MySQL password
 spring.jpa.hibernate.ddl-auto=update
 spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
 
 
-spring.datasource.url=jdbc:mysql://localhost:3306/hotelbooking?createDatabaseIfNotExist=true
-spring.datasource.username=root
-spring.datasource.password=yourpassword  # Replace with your MySQL password
-spring.jpa.hibernate.ddl-auto=update
-spring.jpa.show-sql=true
-spring.thymeleaf.cache=false  # For development
+
 ```
 
 ### Step 7: Run the Application
 1. Create the database: Open MySQL and run `CREATE DATABASE hotelbooking;`.
-2. In Eclipse, right-click the project > **Run As > Spring Boot App**.
-3. Access the app at `http://localhost:8080`.
-   - User: `/register` or `/login`
-   - Admin: `/admin/login` (use email: admin@example.com, password: adminpass – customize as needed)
-4. Test features: Register a user, book rooms, manage as admin.
+2. In Eclipse, 
 
