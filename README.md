@@ -63,7 +63,7 @@ If you encounter SSL or HTTPS-related errors during Maven builds (common in some
 Note: This is a workaround for proxy/SSL issues; use HTTPS in production.
 
 ### Step 5: Project Structure 
----
+```
 hotelbooking/
 ├── src/
 │   ├── main/
@@ -117,7 +117,7 @@ hotelbooking/
 ├── HELP.md
 ├── README.md
 ├── target/
----
+```
  In the `src/main/java/com/example/hotelbooking` folder, create the following sub-packages:
 - `model` (for entities)
 - `dao` (for repositories)
